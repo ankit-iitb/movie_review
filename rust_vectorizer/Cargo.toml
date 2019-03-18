@@ -1,0 +1,11 @@
+[package]
+name = "vectorizer"
+version = "0.1.0"
+authors = ["Ryo <ryomarcher@gmail.com>"]
+description = "A crate for vectorizing a collection of documents."
+
+[dependencies]
+regex = "1"
+num = "0.2.0"
+ndarray = "0.12.0"
+indexmap = "1.0.2"
