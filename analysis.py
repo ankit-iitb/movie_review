@@ -16,7 +16,6 @@ reviews_test = []
 def read_reviews():
     for line in open('movie_data/full_train.txt', 'r'):
         reviews_train.append(line.strip())
-
     for line in open('movie_data/full_test.txt', 'r'):
         reviews_test.append(line.strip())
 
@@ -37,7 +36,13 @@ def train(reviews_train_clean):
     # First 12500 are +ve reviews and last 12500 are -ve reviews
     target = [1 if i < 12500 else 0 for i in range(25000)]
     final_model = LogisticRegression(C=0.05)
-    final_model.fit(X, target)
+
+    l,_ = X.shape
+    tr_idx = np.arange(l)
+    np.random.shuffle(tr_idx)
+    X_shuffle = X[tr_idx,:]
+    target_shuffle = np.array(target)[tr_idx]
+    final_model.fit(X_shuffle, target_shuffle)
     return final_model
 
 if __name__ == "__main__":
@@ -54,3 +59,14 @@ if __name__ == "__main__":
     target = [1 if i < 12500 else 0 for i in range(25000)]
     print ("Final Accuracy: %s"
            % accuracy_score(target, final_model.predict(X_test)))
+
+
+    predict_text = []
+    for line in open('positive.txt', 'r'):
+        predict_text.append(line.strip())
+    for line in open('negative.txt', 'r'):
+        predict_text.append(line.strip())
+    predict_text_clean = preprocess_reviews(predict_text)
+    X_pred = cv.transform(predict_text_clean)
+    y_pred = final_model.predict(X_pred)
+    print(y_pred)
