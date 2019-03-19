@@ -6,6 +6,4 @@ authors = ["Ankit Bhardwaj <bhrdwj.ankit@gmail.com>"]
 [dependencies]
 serde = "1.0.89"
 serde-pickle = "0.4.1"
-rusty-machine = "0.5.4"
-
-vectorizer = {path = "../rust_vectorizer"}
+rusty-machine = {path = "../rusty-machine"}
