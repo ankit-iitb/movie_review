@@ -26,9 +26,9 @@ pub fn rdtsc() -> u64 {
 
 fn main() {
     // Data reading and pre-processing
-    let training_file = File::open("/home/ankit/workspace/movie_review/movie_data/full_train.txt")
+    let training_file = File::open("../../movie_review/movie_data/full_train.txt")
         .expect("Something went wrong reading the file");
-    let test_file = File::open("/home/ankit/workspace/movie_review/movie_data/full_test.txt")
+    let test_file = File::open("../../movie_review/movie_data/full_test.txt")
         .expect("Something went wrong reading the file");
 
     let training_buf_reader = BufReader::new(training_file);
