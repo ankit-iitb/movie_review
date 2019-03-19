@@ -6,4 +6,4 @@ authors = ["Ankit Bhardwaj <bhrdwj.ankit@gmail.com>"]
 [dependencies]
 serde = "1.0.89"
 serde-pickle = "0.4.1"
-rusty-machine = {path = "../rusty-machine"}
+rustlearn = "0.5.0"

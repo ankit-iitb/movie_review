@@ -1,17 +1,15 @@
 #![feature(asm)]
-extern crate rusty_machine;
+extern crate rustlearn;
 
 use std::fs::File;
 use std::io::prelude::*;
 use std::io::BufReader;
 
-use rusty_machine::learning::logistic_reg::LogisticRegressor;
-use rusty_machine::learning::SupModel;
-use rusty_machine::linalg::Vector;
-
-use rusty_machine::data::tokenizers::NaiveTokenizer;
-use rusty_machine::data::vectorizers::text::FreqVectorizer;
-use rusty_machine::data::vectorizers::Vectorizer;
+use rustlearn::feature_extraction::DictVectorizer;
+use rustlearn::linear_models::sgdclassifier::Hyperparameters;
+use rustlearn::linear_models::sgdclassifier::SGDClassifier;
+use rustlearn::metrics;
+use rustlearn::prelude::*;
 
 // Return a 64-bit timestamp using the rdtsc instruction.
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
@@ -24,17 +22,20 @@ pub fn rdtsc() -> u64 {
     }
 }
 
-fn main() {
+fn read_data(filename: &str) -> Vec<Vec<String>> {
     // Data reading and pre-processing
-    let training_file = File::open("../../movie_review/movie_data/full_train.txt")
-        .expect("Something went wrong reading the file");
+    let training_file = File::open(filename).expect("Something went wrong reading the file");
     let training_buf_reader = BufReader::new(training_file);
 
-    let mut training_data: Vec<String> = Vec::new();
+    let mut training_data: Vec<Vec<String>> = Vec::new();
     for mut line in training_buf_reader.lines() {
         match line {
             Ok(mut line) => {
-                training_data.push(line);
+                let mut vector: Vec<String> = Vec::new();
+                for word in line.split_whitespace() {
+                    vector.push(word.to_string());
+                }
+                training_data.push(vector);
             }
 
             Err(_) => {
@@ -42,53 +43,50 @@ fn main() {
             }
         }
     }
+    training_data
+}
 
-    let mut freq_vectorizer = FreqVectorizer::<f64, NaiveTokenizer>::new(NaiveTokenizer::new());
-    let mut training_str: Vec<&str> = Vec::new();
-    for string in training_data.iter() {
-        training_str.push(string);
+fn vectorize_data(training_data: Vec<Vec<String>>) -> SparseRowArray {
+    let mut vectorizer = DictVectorizer::new();
+    for index in 0..training_data.len() {
+        let review = &training_data[index];
+        for word in review.iter() {
+            if index < 12500 {
+                vectorizer.partial_fit(index, word, 1.0);
+            } else {
+                vectorizer.partial_fit(index, word, 0.0);
+            }
+        }
     }
-    freq_vectorizer.fit(&training_str).unwrap();
-    let vectorized = freq_vectorizer.vectorize(&training_str).unwrap();
+    vectorizer.transform()
+}
 
-    println!("Start Training");
+fn train_model(train: &SparseRowArray, target: &Array) -> SGDClassifier {
+    let mut model = Hyperparameters::new(train.cols())
+        .learning_rate(0.5)
+        .l2_penalty(0.000001)
+        .build();
+    let num_epochs = 20;
+    for _ in 0..num_epochs {
+        model.fit(train, target).unwrap();
+    }
+    model
+}
 
-    // Training
-    let mut log_mod = LogisticRegressor::default();
-    let mut vector = vec![0.0; 25000];
+fn main() {
+    let training_data = read_data("../../movie_review/movie_data/full_train.txt");
+    let train = vectorize_data(training_data);
+    let mut y = vec![0.0; 25000];
     for i in 0..12500 {
-        vector[i] = 1.0;
+        y[i] = 1.0;
     }
-
-    let targets = Vector::new(vector);
-    log_mod.train(&vectorized, &targets).unwrap();
-    println!("Finish Training");
+    let target = Array::from(y);
+    let model = train_model(&train, &target);
 
     // Predict
-    let test_file = File::open("../../movie_review/negative.txt")
-        .expect("Something went wrong reading the file");
-    let test_buf_reader = BufReader::new(test_file);
-    let mut test_data: Vec<String> = Vec::new();
-    for mut line in test_buf_reader.lines() {
-        match line {
-            Ok(mut line) => {
-                test_data.push(line);
-            }
-
-            Err(_) => {
-                println!("Error in reading the data");
-            }
-        }
-    }
-
-    let mut freq_vectorizer = FreqVectorizer::<f64, NaiveTokenizer>::new(NaiveTokenizer::new());
-    let mut test_str: Vec<&str> = Vec::new();
-    for string in test_data.iter() {
-        test_str.push(string);
-    }
-    freq_vectorizer.fit(&test_str).unwrap();
-    let vectorized = freq_vectorizer.vectorize(&test_str).unwrap();
     let start = rdtsc();
-    let output = log_mod.predict(&vectorized).unwrap();
-    println!("{}, CPU Cycles {}", output, rdtsc() - start);
+    let predictions = model.predict(&train).unwrap();
+    let stop = rdtsc() - start;
+    let accuracy = metrics::accuracy_score(&target, &predictions);
+    println!("SGDClassifier accuracy: {}% \nCPU Cycles {}", accuracy*100.0, stop);
 }
