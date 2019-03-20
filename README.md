@@ -3,11 +3,6 @@
 ## Run
 ```python3 analysis.py```
 
-## TODO
-Convert the program to query the output per moview
-
-```python analysis.py moviex.txt```
-
 or
 
 ```python svm.py```
@@ -16,6 +11,10 @@ or
 
 ```python load.py```
 
+## TODO
+Convert the program to query the output per moview
+
+```python analysis.py moviex.txt```
 
 Expected Output: Negative Review
 
