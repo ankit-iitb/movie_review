@@ -6,7 +6,16 @@
 ## TODO
 Convert the program to query the output per moview
 
-```python3 analysis.py moviex.txt```
+```python analysis.py moviex.txt```
+
+or
+
+```python svm.py```
+
+or
+
+```python load.py```
+
 
 Expected Output: Negative Review
 
