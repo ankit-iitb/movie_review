@@ -1,5 +1,5 @@
 all:
-	(cd train_and_predict; cargo run --release --bin train_and_predict)
+	(cd svmlight; cargo run --release --bin svmlight)
 
 clean:
-	(cd train_and_predict; cargo clean)
+	(cd svmlight; cargo clean)
