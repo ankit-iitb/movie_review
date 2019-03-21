@@ -5,6 +5,7 @@ extern crate rustlearn;
 use std::fs::File;
 use std::io::Read;
 use std::path::Path;
+use std::str::FromStr;
 
 use rustlearn::ensemble::random_forest;
 use rustlearn::linear_models::sgdclassifier;
@@ -28,10 +29,9 @@ fn get_raw_data(filename: &str) -> String {
 
     let raw_data = match File::open(&path) {
         Err(_) => {
-            panic!("Error in opening file");
+            panic!("Error in opening file {}", filename);
         }
         Ok(mut file) => {
-            println!("Reading data for {}", filename);
             let mut file_data = String::new();
             file.read_to_string(&mut file_data).unwrap();
             file_data
@@ -41,15 +41,44 @@ fn get_raw_data(filename: &str) -> String {
     raw_data
 }
 
-fn build_x_matrix(data: &str, rows: usize) -> SparseRowArray {
-    let mut array = SparseRowArray::zeros(rows, 10);
+fn build_x_matrix(data: &str, rows: usize, cols: usize) -> SparseRowArray {
+    let mut array = SparseRowArray::zeros(rows, cols);
     let mut row_num = 0;
 
     for (_row, line) in data.lines().enumerate() {
         let mut col_num = 0;
         for col_str in line.split_whitespace() {
-            let data = col_str.parse::<usize>().unwrap();
-            array.set(row_num, col_num, data as f32);
+            if col_num > 0 {
+                let split: Vec<&str> = col_str.split(":").collect();
+                array.set(
+                    row_num,
+                    usize::from_str(split[0]).unwrap(),
+                    f32::from_str(split[1]).unwrap(),
+                );
+            }
+            col_num += 1;
+        }
+        row_num += 1;
+    }
+
+    array
+}
+
+fn build_col_matrix(data: &str, rows: usize, cols: usize) -> SparseColumnArray {
+    let mut array = SparseColumnArray::zeros(rows, cols);
+    let mut row_num = 0;
+
+    for (_row, line) in data.lines().enumerate() {
+        let mut col_num = 0;
+        for col_str in line.split_whitespace() {
+            if col_num > 0 {
+                let split: Vec<&str> = col_str.split(":").collect();
+                array.set(
+                    row_num,
+                    usize::from_str(split[0]).unwrap(),
+                    f32::from_str(split[1]).unwrap(),
+                );
+            }
             col_num += 1;
         }
         row_num += 1;
@@ -68,19 +97,19 @@ fn build_y_array(data: &str) -> Array {
         }
     }
 
-    Array::from(y.iter().map(|&x| (x / 10) as f32).collect::<Vec<f32>>())
+    Array::from(y.iter().map(|&x| x as f32).collect::<Vec<f32>>())
 }
 
 fn get_train_data() -> (SparseRowArray, SparseRowArray) {
-    let X_train = build_x_matrix(&get_raw_data("./../data/train.data"), 25010);
-    let X_test = build_x_matrix(&get_raw_data("./../data/test.data"), 1999999);
+    let X_train = build_x_matrix(&get_raw_data("./../data/train.feat"), 25000, 89527);
+    let X_test = build_x_matrix(&get_raw_data("./../data/test.feat"), 25000, 89527);
 
     (X_train, X_test)
 }
 
 fn get_target_data() -> (Array, Array) {
-    let y_train = build_y_array(&get_raw_data("./../data/train.target"));
-    let y_test = build_y_array(&get_raw_data("./../data/test.target"));
+    let y_train = build_y_array(&get_raw_data("./../data/target"));
+    let y_test = build_y_array(&get_raw_data("./../data/target"));
 
     (y_train, y_test)
 }
@@ -93,10 +122,10 @@ fn run_sgdclassifier(
 ) {
     println!("Running SGDClassifier...");
 
-    let num_epochs = 10;
+    let num_epochs = 200;
 
     let mut model = sgdclassifier::Hyperparameters::new(X_train.cols())
-        .learning_rate(0.5)
+        .learning_rate(1.0)
         .l2_penalty(0.000001)
         .build();
 
@@ -107,7 +136,20 @@ fn run_sgdclassifier(
     let predictions = model.predict(X_test).unwrap();
     let accuracy = metrics::accuracy_score(y_test, &predictions);
 
-    println!("SGDClassifier accuracy: {}", accuracy);
+    println!("SGDClassifier accuracy: {}%", accuracy * 100.0);
+
+    let X = build_x_matrix(&get_raw_data("./../data/positive.feat"), 1, 89527);
+    let Y = build_x_matrix(&get_raw_data("./../data/negative.feat"), 1, 89527);
+
+    let start = rdtsc();
+    let pos = model.predict(&X).unwrap().data()[0];
+    let diff1 = rdtsc() - start;
+    let neg = model.predict(&Y).unwrap().data()[0];
+    let diff2 = rdtsc() - start;
+
+    println!("Positive {:#?}, Negative {:#?}", pos, neg);
+    println!("CPU cycle for 1 prediction {}", diff1);
+    println!("CPU cycle for 2 prediction {}\n", diff2);
 }
 
 fn run_decision_tree(
@@ -128,7 +170,19 @@ fn run_decision_tree(
     let predictions = model.predict(&X_test).unwrap();
     let accuracy = metrics::accuracy_score(y_test, &predictions);
 
-    println!("DecisionTree accuracy: {}", accuracy);
+    println!("DecisionTree accuracy: {}%", accuracy * 100.0);
+    let X = build_col_matrix(&get_raw_data("./../data/positive.feat"), 1, 89527);
+    let Y = build_col_matrix(&get_raw_data("./../data/negative.feat"), 1, 89527);
+
+    let start = rdtsc();
+    let pos = model.predict(&X).unwrap().data()[0];
+    let diff1 = rdtsc() - start;
+    let neg = model.predict(&Y).unwrap().data()[0];
+    let diff2 = rdtsc() - start;
+
+    println!("Positive {:#?}, Negative {:#?}", pos, neg);
+    println!("CPU cycle for 1 prediction {}", diff1);
+    println!("CPU cycle for 2 prediction {}\n", diff2);
 }
 
 fn run_random_forest(
@@ -149,7 +203,19 @@ fn run_random_forest(
     let predictions = model.predict(X_test).unwrap();
     let accuracy = metrics::accuracy_score(y_test, &predictions);
 
-    println!("RandomForest accuracy: {}", accuracy);
+    println!("RandomForest accuracy: {}%", accuracy * 100.0);
+    let X = build_x_matrix(&get_raw_data("./../data/positive.feat"), 1, 89527);
+    let Y = build_x_matrix(&get_raw_data("./../data/negative.feat"), 1, 89527);
+
+    let start = rdtsc();
+    let pos = model.predict(&X).unwrap().data()[0];
+    let diff1 = rdtsc() - start;
+    let neg = model.predict(&Y).unwrap().data()[0];
+    let diff2 = rdtsc() - start;
+
+    println!("Positive {:#?}, Negative {:#?}", pos, neg);
+    println!("CPU cycle for 1 prediction {}", diff1);
+    println!("CPU cycle for 2 prediction {}\n", diff2);
 }
 
 fn main() {
@@ -163,7 +229,7 @@ fn main() {
         X_train.nnz()
     );
     println!(
-        "Test data: {} by {} matrix with {} nonzero entries",
+        "Test data: {} by {} matrix with {} nonzero entries\n",
         X_test.rows(),
         X_test.cols(),
         X_test.nnz()
