@@ -68,13 +68,7 @@ fn build_y_array(data: &str) -> Array {
         }
     }
 
-    Array::from(
-        y.iter()
-            .map(|&x| match x {
-                0 => 0.0,
-                _ => 1.0,
-            }).collect::<Vec<f32>>(),
-    )
+    Array::from(y.iter().map(|&x| (x / 10) as f32).collect::<Vec<f32>>())
 }
 
 fn get_train_data() -> (SparseRowArray, SparseRowArray) {
