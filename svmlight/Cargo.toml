@@ -4,4 +4,4 @@ version = "0.1.0"
 authors = ["Ankit Bhardwaj <bhrdwj.ankit@gmail.com>"]
 
 [dependencies]
-rusty-machine = "0.5.4"
+rustlearn = "0.5.0"

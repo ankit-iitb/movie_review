@@ -1,16 +1,16 @@
 #![feature(asm)]
-extern crate rusty_machine;
+#![allow(non_snake_case)]
+extern crate rustlearn;
 
 use std::fs::File;
-use std::io::prelude::*;
-use std::io::BufReader;
-use std::str::FromStr;
+use std::io::Read;
+use std::path::Path;
 
-use rusty_machine::analysis::score::accuracy;
-use rusty_machine::learning::logistic_reg::LogisticRegressor;
-use rusty_machine::learning::SupModel;
-use rusty_machine::linalg::Matrix;
-use rusty_machine::linalg::Vector;
+use rustlearn::ensemble::random_forest;
+use rustlearn::linear_models::sgdclassifier;
+use rustlearn::metrics;
+use rustlearn::prelude::*;
+use rustlearn::trees::decision_tree;
 
 // Return a 64-bit timestamp using the rdtsc instruction.
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
@@ -23,64 +23,159 @@ pub fn rdtsc() -> u64 {
     }
 }
 
-fn load_svmlight_file(filename: &str) -> (Vec<f64>, Vec<f64>, usize) {
-    // Data reading and pre-processing
-    let training_file = File::open(filename).expect("Something went wrong reading the file");
-    let training_buf_reader = BufReader::new(training_file);
+fn get_raw_data(filename: &str) -> String {
+    let path = Path::new(filename);
 
-    let mut y_train: Vec<f64> = Vec::new();
-    let mut x_train: Vec<f64> = Vec::new();
-    let mut num_lines = 0;
-    for mut line in training_buf_reader.lines() {
-        match line {
-            Ok(mut line) => {
-                let mut index = 0;
-                for word in line.split_whitespace() {
-                    if index == 0 {
-                        y_train.push(f64::from_str(word).unwrap());
-                    } else {
-                        let split: Vec<&str> = word.split(":").collect();
-                        x_train.push(f64::from_str(split[1]).unwrap());
-                    }
-                    index += 1;
-                }
-                num_lines += 1;
-            }
+    let raw_data = match File::open(&path) {
+        Err(_) => {
+            panic!("Error in opening file");
+        }
+        Ok(mut file) => {
+            println!("Reading data for {}", filename);
+            let mut file_data = String::new();
+            file.read_to_string(&mut file_data).unwrap();
+            file_data
+        }
+    };
 
-            Err(_) => {
-                println!("Error in reading the data");
-            }
+    raw_data
+}
+
+fn build_x_matrix(data: &str, rows: usize) -> SparseRowArray {
+    let mut array = SparseRowArray::zeros(rows, 10);
+    let mut row_num = 0;
+
+    for (_row, line) in data.lines().enumerate() {
+        let mut col_num = 0;
+        for col_str in line.split_whitespace() {
+            let data = col_str.parse::<usize>().unwrap();
+            array.set(row_num, col_num, data as f32);
+            col_num += 1;
+        }
+        row_num += 1;
+    }
+
+    array
+}
+
+fn build_y_array(data: &str) -> Array {
+    let mut y = Vec::new();
+
+    for line in data.lines() {
+        for datum_str in line.split_whitespace() {
+            let datum = datum_str.parse::<i32>().unwrap();
+            y.push(datum);
         }
     }
-    (x_train, y_train, num_lines)
+
+    Array::from(
+        y.iter()
+            .map(|&x| match x {
+                0 => 0.0,
+                _ => 1.0,
+            }).collect::<Vec<f32>>(),
+    )
+}
+
+fn get_train_data() -> (SparseRowArray, SparseRowArray) {
+    let X_train = build_x_matrix(&get_raw_data("./../data/train.data"), 25010);
+    let X_test = build_x_matrix(&get_raw_data("./../data/test.data"), 1999999);
+
+    (X_train, X_test)
+}
+
+fn get_target_data() -> (Array, Array) {
+    let y_train = build_y_array(&get_raw_data("./../data/train.target"));
+    let y_test = build_y_array(&get_raw_data("./../data/test.target"));
+
+    (y_train, y_test)
+}
+
+fn run_sgdclassifier(
+    X_train: &SparseRowArray,
+    X_test: &SparseRowArray,
+    y_train: &Array,
+    y_test: &Array,
+) {
+    println!("Running SGDClassifier...");
+
+    let num_epochs = 10;
+
+    let mut model = sgdclassifier::Hyperparameters::new(X_train.cols())
+        .learning_rate(0.5)
+        .l2_penalty(0.000001)
+        .build();
+
+    for _ in 0..num_epochs {
+        model.fit(X_train, y_train).unwrap();
+    }
+
+    let predictions = model.predict(X_test).unwrap();
+    let accuracy = metrics::accuracy_score(y_test, &predictions);
+
+    println!("SGDClassifier accuracy: {}", accuracy);
+}
+
+fn run_decision_tree(
+    X_train: &SparseRowArray,
+    X_test: &SparseRowArray,
+    y_train: &Array,
+    y_test: &Array,
+) {
+    println!("Running DecisionTree...");
+
+    let X_train = SparseColumnArray::from(X_train);
+    let X_test = SparseColumnArray::from(X_test);
+
+    let mut model = decision_tree::Hyperparameters::new(X_train.cols()).build();
+
+    model.fit(&X_train, y_train).unwrap();
+
+    let predictions = model.predict(&X_test).unwrap();
+    let accuracy = metrics::accuracy_score(y_test, &predictions);
+
+    println!("DecisionTree accuracy: {}", accuracy);
+}
+
+fn run_random_forest(
+    X_train: &SparseRowArray,
+    X_test: &SparseRowArray,
+    y_train: &Array,
+    y_test: &Array,
+) {
+    println!("Running RandomForest...");
+
+    let num_trees = 10;
+
+    let tree_params = decision_tree::Hyperparameters::new(X_train.cols());
+    let mut model = random_forest::Hyperparameters::new(tree_params, num_trees).build();
+
+    model.fit(X_train, y_train).unwrap();
+
+    let predictions = model.predict(X_test).unwrap();
+    let accuracy = metrics::accuracy_score(y_test, &predictions);
+
+    println!("RandomForest accuracy: {}", accuracy);
 }
 
 fn main() {
-    let (x_train, y_train, num_lines) = load_svmlight_file("poker");
-    let rows = num_lines;
-    let cols = x_train.len() / num_lines;
-    let inputs = Matrix::new(rows, cols, x_train);
-    let targets = Vector::new(y_train);
-
-    let mut log_mod = LogisticRegressor::default();
-
-    // Train the model
-    log_mod.train(&inputs, &targets).unwrap();
-
-    // Now we'll predict a new point
-    let new_point = Matrix::new(
-        1,
-        cols,
-        vec![1.0, 9.0, 1.0, 12.0, 1.0, 10.0, 1.0, 11.0, 1.0, 13.0],
-    );
-    let start = rdtsc();
-    let output = log_mod.predict(&new_point).unwrap();
-    let stop = rdtsc() - start;
+    let (X_train, X_test) = get_train_data();
+    let (y_train, y_test) = get_target_data();
 
     println!(
-        "{:#?} CPU Cycles {} Accuracy {}",
-        output[0],
-        stop,
-        accuracy(log_mod.predict(&inputs).unwrap().iter(), targets.iter())
+        "Training data: {} by {} matrix with {} nonzero entries",
+        X_train.rows(),
+        X_train.cols(),
+        X_train.nnz()
     );
+    println!(
+        "Test data: {} by {} matrix with {} nonzero entries",
+        X_test.rows(),
+        X_test.cols(),
+        X_test.nnz()
+    );
+
+    run_sgdclassifier(&X_train, &X_test, &y_train, &y_test);
+    run_decision_tree(&X_train, &X_test, &y_train, &y_test);
+    run_random_forest(&X_train, &X_test, &y_train, &y_test);
 }
