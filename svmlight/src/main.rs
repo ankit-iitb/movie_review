@@ -124,10 +124,7 @@ fn run_sgdclassifier(
 
     let num_epochs = 200;
 
-    let mut model = sgdclassifier::Hyperparameters::new(X_train.cols())
-        .learning_rate(1.0)
-        .l2_penalty(0.000001)
-        .build();
+    let mut model = sgdclassifier::Hyperparameters::new(X_train.cols()).build();
 
     for _ in 0..num_epochs {
         model.fit(X_train, y_train).unwrap();
@@ -193,7 +190,7 @@ fn run_random_forest(
 ) {
     println!("Running RandomForest...");
 
-    let num_trees = 10;
+    let num_trees = 20;
 
     let tree_params = decision_tree::Hyperparameters::new(X_train.cols());
     let mut model = random_forest::Hyperparameters::new(tree_params, num_trees).build();
