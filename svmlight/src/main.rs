@@ -1,5 +1,6 @@
 #![feature(asm)]
 #![allow(non_snake_case)]
+extern crate bincode;
 extern crate rustlearn;
 
 use std::fs::File;
@@ -119,7 +120,7 @@ fn run_sgdclassifier(
     X_test: &SparseRowArray,
     y_train: &Array,
     y_test: &Array,
-) {
+) -> Vec<u8> {
     println!("Running SGDClassifier...");
 
     let num_epochs = 200;
@@ -135,18 +136,25 @@ fn run_sgdclassifier(
 
     println!("SGDClassifier accuracy: {}%", accuracy * 100.0);
 
+    let serialized = bincode::serialize(&model).unwrap();
+    println!("{}", serialized.len());
+    let start = rdtsc();
+    let model: sgdclassifier::SGDClassifier = bincode::deserialize(&serialized).unwrap();
+    let diff1 = rdtsc() - start;
+
     let X = build_x_matrix(&get_raw_data("./../data/positive.feat"), 1, 89527);
     let Y = build_x_matrix(&get_raw_data("./../data/negative.feat"), 1, 89527);
 
     let start = rdtsc();
     let pos = model.predict(&X).unwrap().data()[0];
-    let diff1 = rdtsc() - start;
     let neg = model.predict(&Y).unwrap().data()[0];
     let diff2 = rdtsc() - start;
 
     println!("Positive {:#?}, Negative {:#?}", pos, neg);
-    println!("CPU cycle for 1 prediction {}", diff1);
+    println!("CPU cycle for deserialization {}", diff1);
     println!("CPU cycle for 2 prediction {}\n", diff2);
+
+    serialized
 }
 
 fn run_decision_tree(
@@ -154,7 +162,7 @@ fn run_decision_tree(
     X_test: &SparseRowArray,
     y_train: &Array,
     y_test: &Array,
-) {
+) -> Vec<u8> {
     println!("Running DecisionTree...");
 
     let X_train = SparseColumnArray::from(X_train);
@@ -168,18 +176,25 @@ fn run_decision_tree(
     let accuracy = metrics::accuracy_score(y_test, &predictions);
 
     println!("DecisionTree accuracy: {}%", accuracy * 100.0);
+
+    let serialized = bincode::serialize(&model).unwrap();
+    println!("{}", serialized.len());
+    let start = rdtsc();
+    let model: decision_tree::DecisionTree = bincode::deserialize(&serialized).unwrap();
+    let diff1 = rdtsc() - start;
+
     let X = build_col_matrix(&get_raw_data("./../data/positive.feat"), 1, 89527);
     let Y = build_col_matrix(&get_raw_data("./../data/negative.feat"), 1, 89527);
-
     let start = rdtsc();
     let pos = model.predict(&X).unwrap().data()[0];
-    let diff1 = rdtsc() - start;
     let neg = model.predict(&Y).unwrap().data()[0];
     let diff2 = rdtsc() - start;
 
     println!("Positive {:#?}, Negative {:#?}", pos, neg);
-    println!("CPU cycle for 1 prediction {}", diff1);
+    println!("CPU cycle for deserialization {}", diff1);
     println!("CPU cycle for 2 prediction {}\n", diff2);
+
+    serialized
 }
 
 fn run_random_forest(
@@ -187,7 +202,7 @@ fn run_random_forest(
     X_test: &SparseRowArray,
     y_train: &Array,
     y_test: &Array,
-) {
+) -> Vec<u8> {
     println!("Running RandomForest...");
 
     let num_trees = 20;
@@ -201,21 +216,28 @@ fn run_random_forest(
     let accuracy = metrics::accuracy_score(y_test, &predictions);
 
     println!("RandomForest accuracy: {}%", accuracy * 100.0);
+    let serialized = bincode::serialize(&model).unwrap();
+    println!("{}", serialized.len());
+    let start = rdtsc();
+    let model: random_forest::RandomForest = bincode::deserialize(&serialized).unwrap();
+    let diff1 = rdtsc() - start;
+
     let X = build_x_matrix(&get_raw_data("./../data/positive.feat"), 1, 89527);
     let Y = build_x_matrix(&get_raw_data("./../data/negative.feat"), 1, 89527);
 
     let start = rdtsc();
     let pos = model.predict(&X).unwrap().data()[0];
-    let diff1 = rdtsc() - start;
     let neg = model.predict(&Y).unwrap().data()[0];
     let diff2 = rdtsc() - start;
 
     println!("Positive {:#?}, Negative {:#?}", pos, neg);
-    println!("CPU cycle for 1 prediction {}", diff1);
+    println!("CPU cycle for deserialization {}", diff1);
     println!("CPU cycle for 2 prediction {}\n", diff2);
+
+    serialized
 }
 
-fn main() {
+pub fn run_ml_application() -> (Vec<u8>, Vec<u8>, Vec<u8>) {
     let (X_train, X_test) = get_train_data();
     let (y_train, y_test) = get_target_data();
 
@@ -232,7 +254,13 @@ fn main() {
         X_test.nnz()
     );
 
-    run_sgdclassifier(&X_train, &X_test, &y_train, &y_test);
-    run_decision_tree(&X_train, &X_test, &y_train, &y_test);
-    run_random_forest(&X_train, &X_test, &y_train, &y_test);
+    let sgd = run_sgdclassifier(&X_train, &X_test, &y_train, &y_test);
+    let d_tree = run_decision_tree(&X_train, &X_test, &y_train, &y_test);
+    let r_forest = run_random_forest(&X_train, &X_test, &y_train, &y_test);
+
+    (sgd, d_tree, r_forest)
+}
+
+fn main() {
+    run_ml_application();
 }

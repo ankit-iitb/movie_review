@@ -5,3 +5,4 @@ authors = ["Ankit Bhardwaj <bhrdwj.ankit@gmail.com>"]
 
 [dependencies]
 rustlearn = "0.5.0"
+bincode = "1.0"
